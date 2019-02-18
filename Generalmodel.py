@@ -61,6 +61,26 @@ class CoastalModel:
         self.h_u = np.ones((ni, nj), order='F') * 100.
         self.h_v = np.ones((ni, nj), order='F') * 100.
 
+    def init_mask(self, ni, nj, l_obc):
+        """
+        Initialises the mask arrays
+        Inputs :
+          l_obc : a dictionnary that describes the nature (open/closed) of the
+                  four domain boundaries
+        Outputs :
+          self.mask_t : the mask at the t point (1 : for water ; 0 for land)
+          self.mask_u : the mask at the u point (1 : for water ; 0 for land)
+          self.mask_v : the mask at the v point (1 : for water ; 0 for land)
+          self.mask_s : the mask at the s point (1 : water everywhere
+          ; 0 if any land)
+        """
+
+        # Default value is 1 : water everywhere
+        self.mask_t = np.ones((ni, nj), order='F')
+        self.mask_u = np.ones((ni, nj), order='F')
+        self.mask_v = np.ones((ni, nj), order='F')
+        self.mask_s = np.ones((ni, nj), order='F')
+
     def define_var2D(self, ni, nj):
         """
         Define the arrays required for the 2D model

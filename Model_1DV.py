@@ -22,6 +22,7 @@ class Model(CoastalModel):
         self.t_end = t_end*24*3600  # End time in seconds since t_str
         self.t_out = 0.  # First date of output (in seconds since t_str)
         self.dt_out = 1. * 3600  # Output period in seconds (each hour)
+        self.dt_3D = 50.  # Time step of the 3D mode (baroclinic / internal)
         self.ndtfast = 0  # Number of sub-barotropic time step per 3D time step
 
     def set_parametre(self):
@@ -83,11 +84,87 @@ class Model(CoastalModel):
         # Define temporary variables
         self.v3d_u = np.zeros((nk, ni, nj))
         self.u3d_v = np.zeros((nk, ni, nj))
+        self.t = self.t_str
 
         # Define atmospheric forcing variables
         self.Pres = np.ones((ni, nj)) * 1013.15
         self.Xstr = np.zeros((ni, nj)) + self.RHO_AIR * self.CD_AIR * 100.
         self.Ystr = np.zeros((ni, nj))
+
+    def solve_equations(self, i, j, l_cori=True, l_epgr=True,
+                        l_frot=True, l_atms=True):
+        """Function to solve primitive primitive equation of the ocean
+        in one dimension
+
+        Args:
+            i (int) x index in the grid
+            j (int) y index in the grid
+
+        return :
+            None
+        """
+        # Set model parametres
+        self.set_parametre()
+
+        # Set model variables
+        self.set_variable()
+
+        # Initialeze current speed by 0 m/s
+        self.u3d[:, i, j] = 0
+        self.v3d[:, i, j] = 0
+
+        # Beginning of the temporal loop
+        while self.t < self.t_end:
+
+            self.t += self.dt_3D
+            self.ht_u[i, j] = self.h_u[i, j]
+            self.ht_v[i, j] = self.h_v[i, j]
+
+            # Begin of the computation of the 3D model
+            np.set_printoptions(suppress=True, linewidth=np.nan,
+                                threshold=np.nan)
+            print('-'*30, '\nStart 3D model', self.t)
+
+            # Update total water heights (zeta + bathymetry) at t, u, v points
+            self.ht_t = self.h_t + 0.0  # The surface dont move
+            self.ht_u[i, j] = self.h_u[i, j] + 0.0
+            self.ht_v[i, j] = self.h_v[i, j] + 0.0
+
+            # Compute bottom drag coefficient
+            Cfrot_u = (self.KAPPA / np.log(1 + (self.sig_u[1] + 1)
+                                           * self.ht_u[i, j] / self.Z0B))**2
+            Cfrot_v = (self.KAPPA / np.log(1 + (self.sig_u[1] + 1)
+                                           * self.ht_v[i, j] / self.Z0B))**2
+
+            # Start to add different forcings to right hand side
+            self.rhs_u3d[:] = 0.
+            self.rhs_v3d[:] = 0.
+
+            # Add Coriolis term    #### a voir après
+            if l_cori:
+                self.rhs_u3d[:, i, j] += + self.FCOR*self.v3d[:, i, j]
+                self.rhs_v3d[:, i, j] += -self.FCOR * self.u3d[:, i, j]
+
+            # Add external pressure gradient
+            omega_maree = 2*np.pi/(12*3600 + 24*60)
+            if l_epgr:
+                self.rhs_u3d[:, i, j] += - 0.00001*np.sin(omega_maree*self.t)
+                self.rhs_v3d[:, i, j] += - 0.00001*np.sin(omega_maree*self.t)
+
+            # Add bottom friction     ### tension de fond
+            if l_frot:
+                V_bot = (self.u3d[1, i, j]**2+self.v3d[1, i, j]**2)**.5
+                self.rhs_u3d[1, i, j] += - Cfrot_u*V_bot * self.u3d[1, i, j]\
+                    / (self.ht_u[i, j] * self.dsig_u[1])
+                self.rhs_v3d[1, i, j] += - Cfrot_v * V_bot * self.v3d[1, i, j]\
+                    / (self.ht_v[i, j] * self.dsig_u[1])
+
+            # Add wind effect
+            if l_atms:
+                self.rhs_u3d[self.kmax, i, j] += self.Xstr[i, j] / \
+                    self.RHO_REF / (self.ht_u[i, j]*self.dsig_u[self.kmax])
+                self.rhs_v3d[self.kmax, i, j] += self.Ystr[i, j] \
+                    / self.RHO_REF / (self.ht_v[i, j] * self.dsig_u[self.kmax])
 
     def __repr__(self):
         """Function to output the characteristics of the simulation

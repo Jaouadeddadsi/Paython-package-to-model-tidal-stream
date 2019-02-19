@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 
 
 class Model(CoastalModel):
+    """Model to solve primitives equations in the ocean in one dimension
+    """
 
     def __init__(self, grid_size, t_end):
         """Model for solving primitive equation of the ocean in one dimension.
@@ -94,6 +96,10 @@ class Model(CoastalModel):
         Args:
             i (int) x index in the grid
             j (int) y index in the grid
+            l_cori (bool)  Coriolis force
+            l_epgr (bool) External pressure gradient (tide)
+            l_frot (bool) Bottom fricton
+            l_atms (bool) Atmospheric forcings (Wind)
 
         return :
             None
@@ -206,6 +212,14 @@ class Model(CoastalModel):
                   (np.abs(self.u2d).max(), np.abs(self.v2d).max()))
             print('Abs Min and Max of 3D Uz et Vz %f %f' %
                   (np.abs(self.u3d).max(), np.abs(self.v3d).max()))
+
+            # Write variable
+            self.create_outputfile()
+            self.create_variables()
+            ind_t = 0
+            self.write_variables(ind_t, self.t)
+            ind_t += 1
+        self.nc.close()
 
     def __repr__(self):
         """Function to output the characteristics of the simulation

@@ -19,22 +19,11 @@ class Model(CoastalModel):
         CoastalModel.__init__(self, imax=3, jmax=3, kmax=100)
         # Time parametrisation
         self.t_str = 0  # Start time
-        self.t_end = t_end*24*3600  # End time in seconds since t_str
+        self.t_end = t_end * 24 * 3600  # End time in seconds since t_str
         self.t_out = 0.  # First date of output (in seconds since t_str)
         self.dt_out = 1. * 3600  # Output period in seconds (each hour)
         self.dt_3D = 50.  # Time step of the 3D mode (baroclinic / internal)
         self.ndtfast = 0  # Number of sub-barotropic time step per 3D time step
-
-    def set_parametre(self):
-        """Function to define the physicals parametres of the model
-
-        Args:
-            None
-
-        return:
-            None
-        """
-
         # Physical Parametrisation
         self.GRAV = 9.81  # Gravitational constant in m.s-2
         self.FCOR = 1e-4  # Coriolis parameter (2 cos(latitude) Omega) in rd/s
@@ -67,6 +56,9 @@ class Model(CoastalModel):
 
         # Set horizontal cell size and define vertical grid
         (ni, nj, nk) = self.estimate_size_grid()
+        self.ni = ni
+        self.nj = nj
+        self.nk = nk
         self.define_Hgrid(self.grid_size)
         self.define_Vgrid(nk)
 
@@ -75,6 +67,9 @@ class Model(CoastalModel):
 
         # Initialise land/sea mask for U, V, T and S points from bathymetry
         self.init_mask(ni, nj, self.l_obc)
+
+        # Define 2D variables
+        self.define_var2D(ni, nj)
 
         # Define 3D variables
         self.define_var3D(ni, nj, nk)
@@ -103,9 +98,6 @@ class Model(CoastalModel):
         return :
             None
         """
-        # Set model parametres
-        self.set_parametre()
-
         # Set model variables
         self.set_variable()
 
@@ -123,7 +115,7 @@ class Model(CoastalModel):
             # Begin of the computation of the 3D model
             np.set_printoptions(suppress=True, linewidth=np.nan,
                                 threshold=np.nan)
-            print('-'*30, '\nStart 3D model', self.t)
+            print('-' * 30, '\nStart 3D model', self.t)
 
             # Update total water heights (zeta + bathymetry) at t, u, v points
             self.ht_t = self.h_t + 0.0  # The surface dont move
@@ -142,19 +134,21 @@ class Model(CoastalModel):
 
             # Add Coriolis term    #### a voir après
             if l_cori:
-                self.rhs_u3d[:, i, j] += + self.FCOR*self.v3d[:, i, j]
+                self.rhs_u3d[:, i, j] += + self.FCOR * self.v3d[:, i, j]
                 self.rhs_v3d[:, i, j] += -self.FCOR * self.u3d[:, i, j]
 
             # Add external pressure gradient
-            omega_maree = 2*np.pi/(12*3600 + 24*60)
+            omega_maree = 2 * np.pi / (12 * 3600 + 24 * 60)
             if l_epgr:
-                self.rhs_u3d[:, i, j] += - 0.00001*np.sin(omega_maree*self.t)
-                self.rhs_v3d[:, i, j] += - 0.00001*np.sin(omega_maree*self.t)
+                self.rhs_u3d[:, i, j] += - 0.00001 * \
+                    np.sin(omega_maree * self.t)
+                self.rhs_v3d[:, i, j] += - 0.00001 * \
+                    np.sin(omega_maree * self.t)
 
             # Add bottom friction     ### tension de fond
             if l_frot:
-                V_bot = (self.u3d[1, i, j]**2+self.v3d[1, i, j]**2)**.5
-                self.rhs_u3d[1, i, j] += - Cfrot_u*V_bot * self.u3d[1, i, j]\
+                V_bot = (self.u3d[1, i, j]**2 + self.v3d[1, i, j]**2)**.5
+                self.rhs_u3d[1, i, j] += - Cfrot_u * V_bot * self.u3d[1, i, j]\
                     / (self.ht_u[i, j] * self.dsig_u[1])
                 self.rhs_v3d[1, i, j] += - Cfrot_v * V_bot * self.v3d[1, i, j]\
                     / (self.ht_v[i, j] * self.dsig_u[1])
@@ -162,9 +156,56 @@ class Model(CoastalModel):
             # Add wind effect
             if l_atms:
                 self.rhs_u3d[self.kmax, i, j] += self.Xstr[i, j] / \
-                    self.RHO_REF / (self.ht_u[i, j]*self.dsig_u[self.kmax])
+                    self.RHO_REF / (self.ht_u[i, j] * self.dsig_u[self.kmax])
                 self.rhs_v3d[self.kmax, i, j] += self.Ystr[i, j] \
                     / self.RHO_REF / (self.ht_v[i, j] * self.dsig_u[self.kmax])
+
+            # Prepare solving
+            self.rhs_u3d *= self.dt_3D
+            self.rhs_v3d *= self.dt_3D
+
+            # Update u3D
+            # Diffusion explicit part : matrix B_exp * uz^{n}
+            B_exp = estimate_explicite_matrix(self.nk, self.dt_3D, self.ALP,
+                                              self.MU_v, self.ht_u[i, j], self)
+
+            # Diffusion implict part : matrix A_imp * uz^{n+1}
+            A_imp = estimate_implicite_matrix(self.nk, self.dt_3D, self.ALP,
+                                              self.MU_v, self.ht_u[i, j], self)
+
+            # Add diffusion terms
+            self.rhs_u3d[:, i, j] += B_exp.dot(self.u3d[:, i, j])
+
+            # Tridiagonal solving
+            self.u3d[1:, i, j] = np.linalg.solve(A_imp[1:, 1:],
+                                                 self.rhs_u3d[1:, i, j])
+
+            # Update v3D
+            # Diffusion explicit part : matrix B_exp * uz^{n}
+            B_exp = estimate_explicite_matrix(self.nk, self.dt_3D, self.ALP,
+                                              self.MU_v, self.ht_v[i, j], self)
+
+            # Diffusion implict part : matrix A_imp * uz^{n+1}
+            A_imp = estimate_implicite_matrix(self.nk, self.dt_3D, self.ALP,
+                                              self.MU_v, self.ht_v[i, j], self)
+
+            # Add diffusion terms
+            # initial condition
+            self.rhs_v3d[:, i, j] += B_exp.dot(self.v3d[:, i, j])
+
+            # Tridiagonal solving
+            self.v3d[1:, i, j] = np.linalg.solve(
+                A_imp[1:, 1:], self.rhs_v3d[1:, i, j])
+
+            # Print the min and max of each variable
+            np.set_printoptions(
+                suppress=True, linewidth=np.nan, threshold=np.nan)
+            print('Min and MAx of Extrem Zeta %f %f' %
+                  (self.zeta.min(), self.zeta.max()))
+            print('Min and Max of 2D U  et V  %f %f' %
+                  (np.abs(self.u2d).max(), np.abs(self.v2d).max()))
+            print('Abs Min and Max of 3D Uz et Vz %f %f' %
+                  (np.abs(self.u3d).max(), np.abs(self.v3d).max()))
 
     def __repr__(self):
         """Function to output the characteristics of the simulation
@@ -183,5 +224,6 @@ class Model(CoastalModel):
 
 if __name__ == '__main__':
     M = Model(500, 2)
-    M.set_parametre()
+    print(M)
     M.set_variable()
+    M.solve_equations(1, 2)

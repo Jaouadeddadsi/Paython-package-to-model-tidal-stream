@@ -1,1 +1,1 @@
-from .1DV_model import Model
+from .Model_1DV import Model

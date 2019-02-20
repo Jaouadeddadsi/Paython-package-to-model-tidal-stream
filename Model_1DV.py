@@ -1,7 +1,6 @@
-from Generalmodel import CoastalModel
-from Dynamic import estimate_explicite_matrix, estimate_implicite_matrix
+from .Generalmodel import CoastalModel
+from .Dynamic import estimate_explicite_matrix, estimate_implicite_matrix
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 class Model(CoastalModel):
@@ -234,10 +233,3 @@ class Model(CoastalModel):
 
         return "grid size {}, Simulation time {}"\
             .format(self.grid_size, self.t_end)
-
-
-if __name__ == '__main__':
-    M = Model(500, 2)
-    print(M)
-    M.set_variable()
-    M.solve_equations(1, 2)

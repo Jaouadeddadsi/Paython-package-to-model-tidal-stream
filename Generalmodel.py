@@ -95,9 +95,12 @@ class CoastalModel:
           self.v2d : the horizontal south-north component of the mean vertical
                      current in m/s
 
-          self.ht_t : total water depth at the t-point within the Arakawa C-grid
-          self.ht_u : total water depth at the u-point within the Arakawa C-grid
-          self.ht_v : total water depth at the v-point within the Arakawa C-grid
+          self.ht_t : total water depth at the t-point within the Arakawa
+          C-grid
+          self.ht_u : total water depth at the u-point within the Arakawa
+          C-grid
+          self.ht_v : total water depth at the v-point within the Arakawa
+          C-grid
 
           self.rhs_u_2d : right hand side of the u-momentum equation ;
                           it will cumulate all the acceleration at the right
@@ -189,11 +192,12 @@ class CoastalModel:
           self.dsig_w : array of the layer thicknesses (in the sigma framework)
                         around w-point (along the vertical)
         """
-        self.sig_u = [((k-self.kmax) - 0.5) / self.kmax for k in range(nk)]
+        self.sig_u = [((k - self.kmax) - 0.5) / self.kmax for k in range(nk)]
         self.sig_u.append(abs(self.sig_u[-1]))
-        self.sig_w = [.5 * (self.sig_u[k]+self.sig_u[k+1]) for k in range(nk)]
-        self.dsig_w = [self.sig_u[k+1] - self.sig_u[k] for k in range(nk)]
-        self.dsig_u = [self.sig_w[k] - self.sig_w[k-1] for k in range(nk)]
+        self.sig_w = [.5 * (self.sig_u[k] + self.sig_u[k + 1])
+                      for k in range(nk)]
+        self.dsig_w = [self.sig_u[k + 1] - self.sig_u[k] for k in range(nk)]
+        self.dsig_u = [self.sig_w[k] - self.sig_w[k - 1] for k in range(nk)]
         self.sig_u = np.array(self.sig_u)
         self.sig_w = np.array(self.sig_w)
         self.dsig_u = np.array(self.dsig_u)

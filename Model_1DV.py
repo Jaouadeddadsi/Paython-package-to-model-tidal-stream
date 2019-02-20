@@ -219,7 +219,7 @@ class Model(CoastalModel):
             ind_t = 0
             self.write_variables(ind_t, self.t)
             ind_t += 1
-        self.nc.close()
+            self.nc.close()
 
     def __repr__(self):
         """Function to output the characteristics of the simulation
